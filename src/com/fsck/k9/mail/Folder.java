@@ -10,16 +10,16 @@ import com.fsck.k9.K9;
 import com.fsck.k9.Preferences;
 import com.fsck.k9.controller.MessageRetrievalListener;
 
-
 public abstract class Folder {
-    protected final Account mAccount;
+	
+	public static final int OPEN_MODE_RW = 0;
+	public static final int OPEN_MODE_RO = 1;
+
+	protected final Account mAccount;
 
     private String status = null;
     private long lastChecked = 0;
     private long lastPush = 0;
-
-    public static final int OPEN_MODE_RW=0;
-    public static final int OPEN_MODE_RO=1;
 
     // NONE is obsolete, it will be translated to NO_CLASS for display and to INHERITED for sync and push
     public enum FolderClass {

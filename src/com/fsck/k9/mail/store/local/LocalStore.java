@@ -1,6 +1,15 @@
 
 package com.fsck.k9.mail.store.local;
 
+import static com.fsck.k9.mail.store.local.QueryBuilder.FOLDERS;
+import static com.fsck.k9.mail.store.local.QueryBuilder.FOLDER_ID;
+import static com.fsck.k9.mail.store.local.QueryBuilder.ID;
+import static com.fsck.k9.mail.store.local.QueryBuilder.MESSAGES;
+import static com.fsck.k9.mail.store.local.QueryBuilder.MESSAGE_ID;
+import static com.fsck.k9.mail.store.local.QueryBuilder.THREADS;
+import static com.fsck.k9.mail.store.local.QueryBuilder.dot;
+import static com.fsck.k9.mail.store.local.QueryBuilder.query;
+
 import java.io.File;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
@@ -26,7 +35,6 @@ import com.fsck.k9.Account;
 import com.fsck.k9.K9;
 import com.fsck.k9.Preferences;
 import com.fsck.k9.controller.MessageRetrievalListener;
-import com.fsck.k9.helper.StringUtils;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Flag;
 import com.fsck.k9.mail.Folder;
@@ -34,11 +42,12 @@ import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.Store;
 import com.fsck.k9.mail.store.LockableDatabase;
-import com.fsck.k9.mail.store.StorageManager;
-import com.fsck.k9.mail.store.UnavailableStorageException;
 import com.fsck.k9.mail.store.LockableDatabase.DbCallback;
 import com.fsck.k9.mail.store.LockableDatabase.WrappedException;
+import com.fsck.k9.mail.store.StorageManager;
 import com.fsck.k9.mail.store.StorageManager.StorageProvider;
+import com.fsck.k9.mail.store.UnavailableStorageException;
+import com.fsck.k9.mail.store.local.QueryBuilder.LimitClauseBuilder;
 import com.fsck.k9.provider.EmailProvider;
 import com.fsck.k9.provider.EmailProvider.MessageColumns;
 import com.fsck.k9.search.LocalSearch;
@@ -59,20 +68,6 @@ public class LocalStore extends Store implements Serializable {
     static final String[] EMPTY_STRING_ARRAY = new String[0];
     static final Flag[] EMPTY_FLAG_ARRAY = new Flag[0];
     static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
-
-    /*
-     * a String containing the columns getMessages expects to work with
-     * in the correct order.
-     */
-    static String GET_MESSAGES_COLS =
-        "subject, sender_list, date, uid, flags, messages.id, to_list, cc_list, " +
-        "bcc_list, reply_to_list, attachment_count, internal_date, messages.message_id, " +
-        "folder_id, preview, threads.id, threads.root, deleted, read, flagged, answered, " +
-        "forwarded ";
-
-    static final String GET_FOLDER_COLS =
-        "folders.id, name, visible_limit, last_updated, status, push_state, last_pushed, " +
-        "integrate, top_group, poll_class, push_class, display_class";
 
     static final int FOLDER_ID_INDEX = 0;
     static final int FOLDER_NAME_INDEX = 1;
@@ -307,8 +302,7 @@ public class LocalStore extends Store implements Serializable {
                     Cursor cursor = null;
 
                     try {
-                        cursor = db.rawQuery("SELECT " + GET_FOLDER_COLS + " FROM folders " +
-                                "ORDER BY name ASC", null);
+                    	cursor = query().folderData().byName().toCursor(db);
                         while (cursor.moveToNext()) {
                             if (cursor.isNull(FOLDER_ID_INDEX)) {
                                 continue;
@@ -541,23 +535,19 @@ public class LocalStore extends Store implements Serializable {
         SqlQueryBuilder.buildWhereClause(mAccount, search.getConditions(), query, queryArgs);
 
         // Avoid "ambiguous column name" error by prefixing "id" with the message table name
-        String where = SqlQueryBuilder.addPrefixToSelection(new String[] { "id" },
-                "messages.", query.toString());
+        String where = SqlQueryBuilder.addPrefixToSelection(new String[] { ID },
+                MESSAGES + ".", query.toString());
 
-        String[] selectionArgs = queryArgs.toArray(EMPTY_STRING_ARRAY);
-
-        String sqlQuery = "SELECT " + GET_MESSAGES_COLS + "FROM messages " +
-                "LEFT JOIN threads ON (threads.message_id = messages.id) " +
-                "LEFT JOIN folders ON (folders.id = messages.folder_id) WHERE " +
-                "((empty IS NULL OR empty != 1) AND deleted = 0)" +
-                ((!StringUtils.isNullOrEmpty(where)) ? " AND (" + where + ")" : "") +
-                " ORDER BY date DESC";
+        LimitClauseBuilder sqlQuery = query().messageData()
+        		.lJoin(THREADS).on(dot(MESSAGES, ID), dot(THREADS, MESSAGE_ID))
+        		.lJoin(FOLDERS).on(dot(MESSAGES, FOLDER_ID), dot(FOLDERS, ID))
+        		.where().notEmpty().and().notDeleted().andLiteral(where, queryArgs).byDateDown();
 
         if (K9.DEBUG) {
             Log.d(K9.LOG_TAG, "Query = " + sqlQuery);
         }
 
-        return getMessages(retrievalListener, null, sqlQuery, selectionArgs);
+        return getMessages(retrievalListener, null, sqlQuery);
     }
 
     /*
@@ -567,7 +557,7 @@ public class LocalStore extends Store implements Serializable {
     Message[] getMessages(
         final MessageRetrievalListener listener,
         final LocalFolder folder,
-        final String queryString, final String[] placeHolders
+        final LimitClauseBuilder query
     ) throws MessagingException {
         final ArrayList<LocalMessage> messages = new ArrayList<LocalMessage>();
         final int j = database.execute(false, new DbCallback<Integer>() {
@@ -576,7 +566,7 @@ public class LocalStore extends Store implements Serializable {
                 Cursor cursor = null;
                 int i = 0;
                 try {
-                    cursor = db.rawQuery(queryString + " LIMIT 10", placeHolders);
+                    cursor = query.limit(10).toCursor(db);
 
                     while (cursor.moveToNext()) {
                         LocalMessage message = new LocalMessage(LocalStore.this, LocalStore.this.mAccount, null, folder);
@@ -589,7 +579,7 @@ public class LocalStore extends Store implements Serializable {
                         i++;
                     }
                     cursor.close();
-                    cursor = db.rawQuery(queryString + " LIMIT -1 OFFSET 10", placeHolders);
+                    cursor = query.limit(-1, 10).toCursor(db);
 
                     while (cursor.moveToNext()) {
                         LocalMessage message = new LocalMessage(LocalStore.this, LocalStore.this.mAccount, null, folder);
