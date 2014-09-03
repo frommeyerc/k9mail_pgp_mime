@@ -1,20 +1,29 @@
 package com.fsck.k9.mail.store.local;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 
+import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteQueryBuilder;
 
 import com.fsck.k9.helper.StringUtils;
+import com.fsck.k9.mail.Address;
+import com.fsck.k9.mail.Flag;
+import com.fsck.k9.mail.Message;
 
 public class QueryBuilder {
 	
+	public static final String HEADERS = "headers";
 	// Tables
 	public static final String FOLDERS = "folders";
 	public static final String THREADS = "threads";
 	public static final String MESSAGES = "messages";
+	public static final String ATTACHMENTS = "attachments";
 	
 	// General Columns
 	public static final String ID = "id";
@@ -31,11 +40,15 @@ public class QueryBuilder {
     public static final String INTEGRATE = "integrate";
     public static final String TOP_GROUP = "top_group";
 
+    public static final String DATE = "date";
+    
+    public static final String NAME = "name";
+    
     // Threads Columns
     public static final String MESSAGE_ID = "message_id";
     
     // Message Columns
-    public static final String CONTENT_DATA = "html_content, text_content, mime_type";
+    public static final String[] CONTENT_DATA = { "html_content", "text_content", "mime_type" };
     public static final String FOLDER_ID = "folder_id";
     
     // Attachment Columns
@@ -44,174 +57,364 @@ public class QueryBuilder {
     // Header Columns
     public static final String HEADER_DATA = "message_id, name, value";
     
-    private static final String FOLDER_COLS =
-            "folders.id, name, visible_limit, last_updated, status, push_state, last_pushed, " +
-            "integrate, top_group, poll_class, push_class, display_class";
+    public static final String[] FOLDER_COLS = { "folders.id", "name", "visible_limit", "last_updated", "status",
+    	"push_state", "last_pushed", "integrate", "top_group", "poll_class", "push_class", "display_class" };
 
-    private static final String MESSAGES_COLS =
-            "subject, sender_list, date, uid, flags, messages.id, to_list, cc_list, " +
-            "bcc_list, reply_to_list, attachment_count, internal_date, messages.message_id, " +
-            "folder_id, preview, threads.id, threads.root, deleted, read, flagged, answered, " +
-            "forwarded";
+    public static final String[] MESSAGES_COLS = { "subject", "sender_list", "date", "uid", "flags", "messages.id",
+    	"to_list", "cc_list", "bcc_list", "reply_to_list", "attachment_count", "internal_date", "messages.message_id", 
+    	"folder_id", "preview", "threads.id", "threads.root", "deleted", "read", "flagged", "answered", "forwarded" };
 
-	private StringBuilder queryBuffer = new StringBuilder();
-	private List<String> argList = new ArrayList<String>();
-	
-	public static QueryBuilder query() {
-		return new QueryBuilder();
+    public static final String[] THREAD_COLS = { "threads.id", "threads.message_id", "threads.root", "threads.parent" };
+    
+	public static SelectBuilder select(String table) {
+		return new SelectBuilder(table);
 	}
 	
-	public static UpdateQueryBuilder update(String table) {
-		return new QueryBuilder().new UpdateQueryBuilder(table);
+	public static JoinSelectBuilder select(JoinBuilder builder) {
+		return new JoinSelectBuilder(builder);
 	}
 	
-	public static InsertQueryBuilder insert(String table) {
-		return new QueryBuilder().new InsertQueryBuilder(table);
-	}
-
-	public static String dot(String... parts) {
-		if (parts == null || parts.length == 0)
-			return null;
-		StringBuilder buffer = new StringBuilder(parts[0]);
-		for (int i = 1; i < parts.length; i++) {
-			buffer.append(".").append(parts[i]);
-		}
-		return buffer.toString();
+	public static UpdateBuilder update(String table) {
+		return new UpdateBuilder(table);
 	}
 	
-	public class InsertQueryBuilder {
-
-		public InsertQueryBuilder(String table) {
-			queryBuffer.append("INSERT INTO ").append(table).append("(");
+	public static InsertBuilder insert(String table) {
+		return new InsertBuilder(table);
+	}
+	
+	public static DeleteBuilder delete(String table) {
+		return new DeleteBuilder(table);
+	}
+	
+	public static abstract class BaseQuery {
+		
+		private String table;
+		
+		public BaseQuery(String table) {
+			this.table = table;
 		}
 		
-		public InsertQueryBuilder set(String column, String value) {
-			return setInternal(column, value);
+		protected String getTable() {
+			return table;
 		}
 		
-		public InsertQueryBuilder set(String column, long value) {
-			return setInternal(column, Long.toString(value));
+	}
+	
+	public static class DeleteBuilder extends BaseQuery implements UsesWhere<DeleteBuilder> {
+
+		private String whereClause = null;
+		private String[] whereArgs = null;
+		
+		public DeleteBuilder(String table) {
+			super(table);
+		}
+
+		@Override
+		public DeleteBuilder where(WhereBuilder b) {
+			this.whereClause = b.buildClause();
+			this.whereArgs = b.getArgs();
+			return this;
 		}
 		
-		public InsertQueryBuilder set(String column, long value, long unless) {
+		public int execute(SQLiteDatabase db) {
+			return db.delete(getTable(), whereClause, whereArgs);
+		}
+		
+	}
+	
+	public static class InsertBuilder extends BaseQuery implements ColumnDataConsumer<InsertBuilder> {
+
+		private ContentValues data = null;
+		
+		public InsertBuilder(String table) {
+			super(table);
+		}
+
+		@Override
+		public InsertBuilder data(ContentValues data) {
+			this.data = data;
+			return this;
+		}
+		
+		public long execute(SQLiteDatabase db) {
+			return db.insert(getTable(), null, data);
+		}
+		
+	}
+	
+	public static class UpdateBuilder extends BaseQuery implements UsesWhere<UpdateBuilder>, ColumnDataConsumer<UpdateBuilder> {
+
+		private String whereClause = null;
+		private String[] whereArgs = null;
+		private ContentValues data = null;
+		
+		public UpdateBuilder(String table) {
+			super(table);
+		}
+
+		@Override
+		public UpdateBuilder where(WhereBuilder b) {
+			whereClause = b.buildClause();
+			whereArgs = b.getArgs();
+			return this;
+		}
+
+		@Override
+		public UpdateBuilder data(ContentValues data) {
+			this.data = data;
+			return this;
+		}
+		
+		public int execute(SQLiteDatabase db) {
+			return db.update(getTable(), data, whereClause, whereArgs);
+		}
+		
+	}
+	
+	public static class SelectBuilder extends BaseQuery implements UsesWhere<SelectBuilder> {
+
+		protected String[] columns = null;
+		
+		protected String whereClause = null;
+		protected String[] whereArgs = null;
+
+		protected String groupBy = null;
+		protected String having = null;
+		protected String orderBy = null;
+		protected String limit = null;
+		
+		
+		public SelectBuilder(String table) {
+			super(table);
+		}
+
+		public SelectBuilder cols(String... columns) {
+			this.columns = columns;
+			return this;
+		}
+		
+		@Override
+		public SelectBuilder where(WhereBuilder b) {
+			whereClause = b.buildClause();
+			whereArgs = b.getArgs();
+			return this;
+		}
+		
+		public SelectBuilder orderBy(String column, boolean up) {
+			this.orderBy = column + " " + (up ? "ASC" : "DESC");
+			return this;
+		}
+		
+		public SelectBuilder limit(int limit) {
+			this.limit = "LIMIT " + Integer.toString(limit);
+			return this;
+		}
+		
+		public SelectBuilder limit(int limit, int offset) {
+			this.limit = "LIMIT " + limit + " OFFSET " + offset;
+			return this;
+		}
+		
+		public Cursor execute(SQLiteDatabase db) {
+			return db.query(getTable(), columns, whereClause, whereArgs, groupBy, having, orderBy, limit);
+		}
+		
+		String toQuery() {
+			return "SELECT " + join(columns) + " FROM " + getTable() + " WHERE " + whereClause;
+		}
+		
+		String[] getArgs() {
+			return whereArgs;
+		}
+
+		private String join(String[] cols) {
+			if (cols == null || cols.length == 0)
+				return "";
+			StringBuilder b = new StringBuilder(cols[0]);
+			for (int i = 1; i < cols.length; i++)
+				b.append(", ").append(cols[i]);
+			return b.toString();
+		}
+		
+	}
+	
+	public static class JoinSelectBuilder extends SelectBuilder {
+
+		public JoinSelectBuilder(JoinBuilder builder) {
+			super(builder.build());
+		}
+
+		@Override
+		public Cursor execute(SQLiteDatabase db) {
+			SQLiteQueryBuilder queryBuilder = new SQLiteQueryBuilder();
+			queryBuilder.setTables(getTable());
+			return queryBuilder.query(db, columns, whereClause, whereArgs, groupBy, having, orderBy, limit);
+		}
+		
+	}
+	
+	public interface UsesWhere<T> {
+		
+		T where(WhereBuilder b);
+		
+	}
+	
+	public interface ColumnDataConsumer<T> {
+		
+		T data(ContentValues data);
+		
+	}
+	
+	public static class DataBuilder {
+		
+		private ContentValues data = new ContentValues();
+		
+		public static DataBuilder map() {
+			return new DataBuilder();
+		}
+		
+		public ContentValues build() {
+			return data;
+		}
+		
+		public DataBuilder put(String column, String value) {
+			data.put(column, value);
+			return this;
+		}
+		
+		public DataBuilder putNotNull(String column, String value) {
+			if (value != null)
+				data.put(column, value);
+			return this;
+		}
+		
+		public DataBuilder put(String column, long value) {
+			data.put(column, value);
+			return this;
+		}
+		
+		public DataBuilder putU(String column, long value, long unless) {
 			if (value != unless)
-				return set(column, value);
-			else
-				return this;
-		}
-		
-		private InsertQueryBuilder setInternal(String column, String value) {
-			queryBuffer.append(column).append(", ");
-			argList.add(value);
-			return this;
-		}
-		
-		public void execute(SQLiteDatabase db) {
-			queryBuffer.delete(queryBuffer.length() - 2, queryBuffer.length());
-			queryBuffer.append(") VALUES (").append(argList.get(0));
-			for (int i = 1; i < argList.size(); i++) {
-				queryBuffer.append(", ").append(argList.get(i));
-			}
-			queryBuffer.append(")");
-			db.rawQuery(queryBuffer.toString(), new String[0]);
-		}
-		
-	}
-	
-	public class UpdateQueryBuilder extends WhereClauseBuilder {
-		
-		private boolean firstValue = true;
-		
-		UpdateQueryBuilder(String table) {
-			queryBuffer.append("UPDATE ").append(table).append(" SET");
-		}
-		
-		public UpdateQueryBuilder with(String field, long value) {
-			return with(field, Long.toString(value));
-		}
-		
-		public UpdateQueryBuilder with(String field, String value) {
-			if (firstValue)
-				firstValue = false;
-			else
-				queryBuffer.append(",");
-			queryBuffer.append(" " + field + " = ?");
-			argList.add(value);
+				data.put(column, value);
 			return this;
 		}
 
+		public DataBuilder putNull(String column) {
+			data.putNull(column);
+			return this;
+		}
+		
+		public DataBuilder putDate(String column, Date date) {
+			data.put(column, date != null ? date.getTime() : System.currentTimeMillis());
+			return this;
+		}
+		
+		public DataBuilder putFlags(Flag[] flags) {
+			data.put("flags", LocalStoreUtil.serializeFlags(flags));
+			return this;
+		}
+		
+		public DataBuilder putFlag(String column, Message message, Flag flag) {
+			data.put(column, message.isSet(flag) ? 1 : 0);
+			return this;
+		}
+		
+		public DataBuilder putAddrList(String column, Address[] addresses) {
+			data.put(column, Address.pack(addresses));
+			return this;
+		}
+		
+		public DataBuilder putText(String column, String text) {
+			data.put(column, text.isEmpty() ? null : text);
+			return this;
+		}
+		
+		public DataBuilder putToS(String column, Object value) {
+			data.put(column, value != null ? value.toString() : null);
+			return this;
+		}
+		
 	}
 	
-	public class JoinClauseBuilder extends WhereClauseBuilder {
+	public static class WhereBuilder {
 		
-		public JoinClauseBuilder lJoin(String table) {
-			queryBuffer.append(" LEFT JOIN ").append(table);
-			return this;
+		private StringBuilder queryBuffer = new StringBuilder();
+		private List<String> argList = new ArrayList<String>();
+		
+		public static WhereBuilder cond() {
+			return new WhereBuilder();
 		}
 		
-		public JoinClauseBuilder on(String leftField, String rightField) {
-			queryBuffer.append(" ON ").append(leftField).append(" = ").append(rightField);
-			return this;
-		}
-		
-	}
-	
-	public class WhereClauseBuilder extends OrderClauseBuilder {
-		
-		public WhereClauseBuilder where() {
-			queryBuffer.append(" WHERE ");
-			return this;
-		}
-		
-		public WhereClauseBuilder folder(String name, long id) {
+		public WhereBuilder folder(String name, long id) {
 			return name != null ? folder(name) : id(id);
 		}
 		
-		public WhereClauseBuilder folder(String name) {
-			return addWhere("name", name);
+		public WhereBuilder folder(String name) {
+			return addWhere(NAME, name);
 		}
 		
-		public WhereClauseBuilder id(long mId) {
+		public WhereBuilder id(long mId) {
 			return addWhere(ID, Long.toString(mId));
 		}
 
-		public WhereClauseBuilder folderId(long folderId) {
-			return addWhere(FOLDER_ID, folderId);
+		public WhereBuilder folderId(long folderId) {
+			return addWhere(MESSAGES + "." + FOLDER_ID, folderId);
 		}
 
-		public WhereClauseBuilder messageId(long mId) {
+		public WhereBuilder messageId(long mId) {
 			return addWhere(MESSAGE_ID, mId);
 		}
 		
-		public WhereClauseBuilder uId(String uId) {
+		public WhereBuilder messageId(String mId) {
+			return addWhere(MESSAGES + "." + MESSAGE_ID, mId);
+		}
+		
+		public WhereBuilder uId(String uId) {
 			return addWhere("uid", uId);
 		}
 		
-		public WhereClauseBuilder dateBefore(long cutoff) {
+		public WhereBuilder root(long rootId) {
+			return addWhere("root", rootId);
+		}
+		
+		public WhereBuilder dateBefore(long cutoff) {
 			queryBuffer.append("date < ").append(Long.toString(cutoff));
 			return this;
 		}
 		
-		public WhereClauseBuilder notEmpty() {
+		public WhereBuilder isEmpty() {
+			queryBuffer.append("messages.empty = 1");
+			return this;
+		}
+		
+		public WhereBuilder notEmpty() {
 			queryBuffer.append("(empty IS NULL OR empty != 1)");
 			return this;
 		}
 		
-		public WhereClauseBuilder notDeleted() {
+		public WhereBuilder notDeleted() {
 			return flag("deleted", false);
 		}
 		
-		public WhereClauseBuilder notRead() {
+		public WhereBuilder notRead() {
 			return flag("read", false);
 		}
 		
-		public WhereClauseBuilder flagged() {
+		public WhereBuilder flagged() {
 			return flag("flagged", true);
 		}
 		
-		public WhereClauseBuilder inMessages(Collection<Long> messageIds) {
-			queryBuffer.append(MESSAGE_ID).append(" IN (");
-			for (Long id : messageIds) {
+		public WhereBuilder inMessages(Collection<Long> messageIds) {
+			return addInClause(MESSAGE_ID, messageIds);
+		}
+		
+		public WhereBuilder inUids(Collection<String> uids) {
+			return addInClause("uid", uids);
+		}
+		
+		private WhereBuilder addInClause(String field, Collection<? extends Object> values) {
+			queryBuffer.append(field).append(" IN (");
+			for (Object id : values) {
 				queryBuffer.append("?, ");
 				argList.add(id.toString());
 			}
@@ -221,7 +424,13 @@ public class QueryBuilder {
 			return this;
 		}
 		
-		public WhereClauseBuilder andLiteral(String literalClause, List<String> arguments) {
+		public WhereBuilder inSubselect(String field, SelectBuilder builder) {
+			queryBuffer.append(field).append(" IN (").append(builder.toQuery()).append(")");
+			argList.addAll(Arrays.asList(builder.getArgs()));
+			return this;
+		}
+		
+		public WhereBuilder andLiteral(String literalClause, List<String> arguments) {
 			if (!StringUtils.isNullOrEmpty(literalClause)) {
 				queryBuffer.append(" AND (").append(literalClause).append(")");
 				argList.addAll(arguments);
@@ -229,115 +438,58 @@ public class QueryBuilder {
 			return this;
 		}
 		
-		public WhereClauseBuilder and() {
+		public WhereBuilder and() {
 			queryBuffer.append(" AND ");
 			return this;
 		}
 		
-		private WhereClauseBuilder addWhere(String field, String argValue) {
+		private WhereBuilder addWhere(String field, String argValue) {
 			queryBuffer.append(field).append(" = ?");
 			argList.add(argValue);
 			return this;
 		}
 		
-		private WhereClauseBuilder addWhere(String field, long argValue) {
+		private WhereBuilder addWhere(String field, long argValue) {
 			return addWhere(field, Long.toString(argValue));
 		}
 		
-		private WhereClauseBuilder flag(String flag, boolean set) {
+		private WhereBuilder flag(String flag, boolean set) {
 			queryBuffer.append(flag).append(" = ").append(set ? 1 : 0);
 			return this;
 		}
-		
-	}
-	
-	public class OrderClauseBuilder extends LimitClauseBuilder {
-		
-		public LimitClauseBuilder byId() {
-			return byFieldAscending(ID);
-		}
-		
-		public LimitClauseBuilder byName() {
-			return byFieldAscending("name");
-		}
-		
-		private LimitClauseBuilder byFieldAscending(String field) {
-			queryBuffer.append(" ORDER BY ").append(field).append(" ASC");
-			return this;
-		}
-		
-		public LimitClauseBuilder byDateDown() {
-			queryBuffer.append(" ORDER BY ").append("date").append(" DESC");
-			return this;
-		}
-		
-	}
-	
-	public class LimitClauseBuilder extends ExecutableQuery {
-		
-		public ExecutableQuery limit(int limit) {
-			queryBuffer.append(" LIMIT ").append(limit);
-			return this;
-		}
-		
-		public ExecutableQuery limit(int limit, int offset) {
-			queryBuffer.append(" LIMIT ").append(limit).append(" OFFSET ").append(offset);
-			return this;
-		}
-		
-	}
 
-	public class ExecutableQuery {
-		
-		public Cursor toCursor(SQLiteDatabase db) {
-			return db.rawQuery(queryBuffer.toString(), argList.toArray(new String[argList.size()]));
-		}
-		
-		public void execute(SQLiteDatabase db) {
-			toCursor(db);
-		}
-
-		@Override
-		public String toString() {
+		public String buildClause() {
 			return queryBuffer.toString();
 		}
 		
-	}
-	
-	private QueryBuilder() {
-	}
-	
-	public JoinClauseBuilder folderData() {
-		return folderData(FOLDER_COLS);
-	}
-	
-	public JoinClauseBuilder folderData(String cols) {
-		return selectStmt(FOLDERS, cols);
-	}
-	
-	public JoinClauseBuilder messageCount() {
-		return messageData("COUNT(id)");
-	}
-	
-	public JoinClauseBuilder messageData() {
-		return messageData(MESSAGES_COLS);
-	}
-	
-	public JoinClauseBuilder messageData(String cols) {
-		return selectStmt(MESSAGES, cols);
-	}
-	
-	public JoinClauseBuilder attachmentData() {
-		return selectStmt("attachments", ATTACH_DATA);
-	}
+		public String[] getArgs() {
+			return argList.toArray(new String[argList.size()]);
+		}
 
-	public JoinClauseBuilder headers() {
-		return selectStmt("headers", HEADER_DATA);
 	}
 	
-	private JoinClauseBuilder selectStmt(String table, String cols) {
-		queryBuffer.append("SELECT ").append(cols).append(" FROM ").append(table);
-		return new JoinClauseBuilder();
+	public static class JoinBuilder {
+		
+		private StringBuilder queryBuffer = new StringBuilder();
+		
+		public JoinBuilder(String table) {
+			queryBuffer.append(table);
+		}
+
+		public JoinBuilder lJoin(String table) {
+			queryBuffer.append(" LEFT JOIN ").append(table);
+			return this;
+		}
+		
+		public JoinBuilder on(String leftTable, String leftField, String rightTable, String rightField) {
+			queryBuffer.append(" ON ").append(leftTable).append(".").append(leftField).append(" = ").append(rightTable).append(".").append(rightField);
+			return this;
+		}
+		
+		public String build() {
+			return queryBuffer.toString();
+		}
+		
 	}
 	
 }

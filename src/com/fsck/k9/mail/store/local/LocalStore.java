@@ -1,14 +1,16 @@
-
 package com.fsck.k9.mail.store.local;
 
+import static com.fsck.k9.mail.store.local.QueryBuilder.DATE;
 import static com.fsck.k9.mail.store.local.QueryBuilder.FOLDERS;
+import static com.fsck.k9.mail.store.local.QueryBuilder.FOLDER_COLS;
 import static com.fsck.k9.mail.store.local.QueryBuilder.FOLDER_ID;
 import static com.fsck.k9.mail.store.local.QueryBuilder.ID;
 import static com.fsck.k9.mail.store.local.QueryBuilder.MESSAGES;
+import static com.fsck.k9.mail.store.local.QueryBuilder.MESSAGES_COLS;
 import static com.fsck.k9.mail.store.local.QueryBuilder.MESSAGE_ID;
+import static com.fsck.k9.mail.store.local.QueryBuilder.NAME;
 import static com.fsck.k9.mail.store.local.QueryBuilder.THREADS;
-import static com.fsck.k9.mail.store.local.QueryBuilder.dot;
-import static com.fsck.k9.mail.store.local.QueryBuilder.query;
+import static com.fsck.k9.mail.store.local.QueryBuilder.select;
 
 import java.io.File;
 import java.io.Serializable;
@@ -47,7 +49,9 @@ import com.fsck.k9.mail.store.LockableDatabase.WrappedException;
 import com.fsck.k9.mail.store.StorageManager;
 import com.fsck.k9.mail.store.StorageManager.StorageProvider;
 import com.fsck.k9.mail.store.UnavailableStorageException;
-import com.fsck.k9.mail.store.local.QueryBuilder.LimitClauseBuilder;
+import com.fsck.k9.mail.store.local.QueryBuilder.JoinBuilder;
+import com.fsck.k9.mail.store.local.QueryBuilder.SelectBuilder;
+import com.fsck.k9.mail.store.local.QueryBuilder.WhereBuilder;
 import com.fsck.k9.provider.EmailProvider;
 import com.fsck.k9.provider.EmailProvider.MessageColumns;
 import com.fsck.k9.search.LocalSearch;
@@ -66,7 +70,6 @@ public class LocalStore extends Store implements Serializable {
 
     static final Message[] EMPTY_MESSAGE_ARRAY = new Message[0];
     static final String[] EMPTY_STRING_ARRAY = new String[0];
-    static final Flag[] EMPTY_FLAG_ARRAY = new Flag[0];
     static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
 
     static final int FOLDER_ID_INDEX = 0;
@@ -302,7 +305,7 @@ public class LocalStore extends Store implements Serializable {
                     Cursor cursor = null;
 
                     try {
-                    	cursor = query().folderData().byName().toCursor(db);
+                    	cursor = select(FOLDERS).cols(FOLDER_COLS).orderBy(NAME, true).execute(db);
                         while (cursor.moveToNext()) {
                             if (cursor.isNull(FOLDER_ID_INDEX)) {
                                 continue;
@@ -538,10 +541,9 @@ public class LocalStore extends Store implements Serializable {
         String where = SqlQueryBuilder.addPrefixToSelection(new String[] { ID },
                 MESSAGES + ".", query.toString());
 
-        LimitClauseBuilder sqlQuery = query().messageData()
-        		.lJoin(THREADS).on(dot(MESSAGES, ID), dot(THREADS, MESSAGE_ID))
-        		.lJoin(FOLDERS).on(dot(MESSAGES, FOLDER_ID), dot(FOLDERS, ID))
-        		.where().notEmpty().and().notDeleted().andLiteral(where, queryArgs).byDateDown();
+        SelectBuilder sqlQuery = select(new JoinBuilder(MESSAGES).lJoin(THREADS).on(MESSAGES, ID, THREADS, MESSAGE_ID)
+        		.lJoin(FOLDERS).on(MESSAGES, FOLDER_ID, FOLDERS, ID)).cols(MESSAGES_COLS)
+        		.where(WhereBuilder.cond().notEmpty().and().notDeleted().andLiteral(where, queryArgs)).orderBy(DATE, false);
 
         if (K9.DEBUG) {
             Log.d(K9.LOG_TAG, "Query = " + sqlQuery);
@@ -557,7 +559,7 @@ public class LocalStore extends Store implements Serializable {
     Message[] getMessages(
         final MessageRetrievalListener listener,
         final LocalFolder folder,
-        final LimitClauseBuilder query
+        final SelectBuilder query
     ) throws MessagingException {
         final ArrayList<LocalMessage> messages = new ArrayList<LocalMessage>();
         final int j = database.execute(false, new DbCallback<Integer>() {
@@ -566,7 +568,7 @@ public class LocalStore extends Store implements Serializable {
                 Cursor cursor = null;
                 int i = 0;
                 try {
-                    cursor = query.limit(10).toCursor(db);
+                    cursor = query.limit(10).execute(db);
 
                     while (cursor.moveToNext()) {
                         LocalMessage message = new LocalMessage(LocalStore.this, LocalStore.this.mAccount, null, folder);
@@ -579,7 +581,7 @@ public class LocalStore extends Store implements Serializable {
                         i++;
                     }
                     cursor.close();
-                    cursor = query.limit(-1, 10).toCursor(db);
+                    cursor = query.limit(-1, 10).execute(db);
 
                     while (cursor.moveToNext()) {
                         LocalMessage message = new LocalMessage(LocalStore.this, LocalStore.this.mAccount, null, folder);
@@ -701,28 +703,6 @@ public class LocalStore extends Store implements Serializable {
                 return null;
             }
         });
-    }
-
-
-    String serializeFlags(Flag[] flags) {
-        List<Flag> extraFlags = new ArrayList<Flag>();
-
-        for (Flag flag : flags) {
-            switch (flag) {
-                case DELETED:
-                case SEEN:
-                case FLAGGED:
-                case ANSWERED:
-                case FORWARDED: {
-                    break;
-                }
-                default: {
-                    extraFlags.add(flag);
-                }
-            }
-        }
-
-        return Utility.combine(extraFlags.toArray(EMPTY_FLAG_ARRAY), ',').toUpperCase(Locale.US);
     }
 
     static class ThreadInfo {

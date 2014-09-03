@@ -277,7 +277,7 @@ public class LocalMessage extends MimeMessage {
                      * Set the flags on the message.
                      */
                     ContentValues cv = new ContentValues();
-                    cv.put("flags", LocalMessage.this.localStore.serializeFlags(getFlags()));
+                    cv.put("flags", LocalStoreUtil.serializeFlags(getFlags()));
                     cv.put("read", isSet(Flag.SEEN) ? 1 : 0);
                     cv.put("flagged", isSet(Flag.FLAGGED) ? 1 : 0);
                     cv.put("answered", isSet(Flag.ANSWERED) ? 1 : 0);

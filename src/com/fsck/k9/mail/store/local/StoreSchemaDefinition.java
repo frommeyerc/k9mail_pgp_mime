@@ -428,7 +428,7 @@ class StoreSchemaDefinition implements LockableDatabase.SchemaDefinition {
                             }
 
 
-                            cv.put("flags", localStore.serializeFlags(extraFlags.toArray(LocalStore.EMPTY_FLAG_ARRAY)));
+                            cv.put("flags", LocalStoreUtil.serializeFlags(extraFlags.toArray(new Flag[extraFlags.size()])));
                             cv.put("read", read);
                             cv.put("flagged", flagged);
                             cv.put("answered", answered);
