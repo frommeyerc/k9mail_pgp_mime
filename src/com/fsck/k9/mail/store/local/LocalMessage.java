@@ -140,7 +140,6 @@ public class LocalMessage extends MimeMessage {
     /* Custom version of writeTo that updates the MIME message based on localMessage
      * changes.
      */
-
     @Override
     public void writeTo(OutputStream out) throws IOException, MessagingException {
         if (mMessageDirty) buildMimeRepresentation();
@@ -300,9 +299,7 @@ public class LocalMessage extends MimeMessage {
      * and attachments as well. Delete will not actually remove the row since we need
      * to retain the uid for synchronization purposes.
      */
-    private void delete() throws MessagingException
-
-    {
+    private void delete() throws MessagingException {
         /*
          * Delete all of the message's content to save space.
          */

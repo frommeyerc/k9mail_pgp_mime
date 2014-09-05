@@ -6,10 +6,11 @@ public class LocalTextBody extends TextBody {
     /**
      * This is an HTML-ified version of the message for display purposes.
      */
-    private String mBodyForDisplay;
+    private final String mBodyForDisplay;
 
     public LocalTextBody(String body) {
         super(body);
+        mBodyForDisplay = null;
     }
 
     public LocalTextBody(String body, String bodyForDisplay) {
@@ -21,8 +22,4 @@ public class LocalTextBody extends TextBody {
         return mBodyForDisplay;
     }
 
-    public void setBodyForDisplay(String mBodyForDisplay) {
-        this.mBodyForDisplay = mBodyForDisplay;
-    }
-
-}//LocalTextBody
+}

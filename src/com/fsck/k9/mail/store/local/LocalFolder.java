@@ -733,9 +733,7 @@ public class LocalFolder extends Folder implements Serializable {
                                 // SpamAssassin rules.
                                 localMessage.setHeader(MimeHeader.HEADER_CONTENT_TYPE, "text/plain");
                                 localMessage.setBody(new TextBody(""));
-                            } else if (mp.getCount() == 1 && (mp.getBodyPart(0) instanceof LocalAttachmentBodyPart) == false)
-
-                            {
+                            } else if (mp.getCount() == 1 && (mp.getBodyPart(0) instanceof LocalAttachmentBodyPart) == false) {
                                 // If we have only one part, drop the MimeMultipart container.
                                 BodyPart part = mp.getBodyPart(0);
                                 localMessage.setHeader(MimeHeader.HEADER_CONTENT_TYPE, part.getContentType());
