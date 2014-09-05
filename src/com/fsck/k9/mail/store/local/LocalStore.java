@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import android.app.Application;
@@ -113,21 +112,21 @@ public class LocalStore extends Store implements Serializable {
 
     public static String getColumnNameForFlag(Flag flag) {
         switch (flag) {
-            case SEEN: {
-                return MessageColumns.READ;
-            }
-            case FLAGGED: {
-                return MessageColumns.FLAGGED;
-            }
-            case ANSWERED: {
-                return MessageColumns.ANSWERED;
-            }
-            case FORWARDED: {
-                return MessageColumns.FORWARDED;
-            }
-            default: {
-                throw new IllegalArgumentException("Flag must be a special column flag");
-            }
+        case SEEN: {
+            return MessageColumns.READ;
+        }
+        case FLAGGED: {
+            return MessageColumns.FLAGGED;
+        }
+        case ANSWERED: {
+            return MessageColumns.ANSWERED;
+        }
+        case FORWARDED: {
+            return MessageColumns.FORWARDED;
+        }
+        default: {
+            throw new IllegalArgumentException("Flag must be a special column flag");
+        }
         }
     }
 
@@ -172,7 +171,7 @@ public class LocalStore extends Store implements Serializable {
         final StorageManager storageManager = StorageManager.getInstance(mApplication);
 
         final File attachmentDirectory = storageManager.getAttachmentDirectory(uUid,
-                                         database.getStorageProviderId());
+                database.getStorageProviderId());
 
         return database.execute(false, new DbCallback<Long>() {
             @Override
@@ -305,7 +304,7 @@ public class LocalStore extends Store implements Serializable {
                     Cursor cursor = null;
 
                     try {
-                    	cursor = select(FOLDERS).cols(FOLDER_COLS).orderBy(NAME, true).execute(db);
+                        cursor = select(FOLDERS).cols(FOLDER_COLS).orderBy(NAME, true).execute(db);
                         while (cursor.moveToNext()) {
                             if (cursor.isNull(FOLDER_ID_INDEX)) {
                                 continue;
@@ -368,13 +367,13 @@ public class LocalStore extends Store implements Serializable {
                             Cursor cursor = null;
                             try {
                                 cursor = db.query(
-                                             "attachments",
-                                             new String[] { "store_data" },
-                                             "id = ?",
-                                             new String[] { file.getName() },
-                                             null,
-                                             null,
-                                             null);
+                                        "attachments",
+                                        new String[] { "store_data" },
+                                        "id = ?",
+                                        new String[] { file.getName() },
+                                        null,
+                                        null,
+                                        null);
                                 if (cursor.moveToNext()) {
                                     if (cursor.getString(0) == null) {
                                         if (K9.DEBUG)
@@ -435,12 +434,12 @@ public class LocalStore extends Store implements Serializable {
                 Cursor cursor = null;
                 try {
                     cursor = db.query("pending_commands",
-                                      new String[] { "id", "command", "arguments" },
-                                      null,
-                                      null,
-                                      null,
-                                      null,
-                                      "id ASC");
+                            new String[] { "id", "command", "arguments" },
+                            null,
+                            null,
+                            null,
+                            null,
+                            "id ASC");
                     ArrayList<PendingCommand> commands = new ArrayList<PendingCommand>();
                     while (cursor.moveToNext()) {
                         PendingCommand command = new PendingCommand();
@@ -531,7 +530,7 @@ public class LocalStore extends Store implements Serializable {
     }
 
     public Message[] searchForMessages(MessageRetrievalListener retrievalListener,
-                                        LocalSearch search) throws MessagingException {
+            LocalSearch search) throws MessagingException {
 
         StringBuilder query = new StringBuilder();
         List<String> queryArgs = new ArrayList<String>();
@@ -542,8 +541,8 @@ public class LocalStore extends Store implements Serializable {
                 MESSAGES + ".", query.toString());
 
         SelectBuilder sqlQuery = select(new JoinBuilder(MESSAGES).lJoin(THREADS).on(MESSAGES, ID, THREADS, MESSAGE_ID)
-        		.lJoin(FOLDERS).on(MESSAGES, FOLDER_ID, FOLDERS, ID)).cols(MESSAGES_COLS)
-        		.where(WhereBuilder.cond().notEmpty().and().notDeleted().andLiteral(where, queryArgs)).orderBy(DATE, false);
+                .lJoin(FOLDERS).on(MESSAGES, FOLDER_ID, FOLDERS, ID)).cols(MESSAGES_COLS)
+                .where(WhereBuilder.cond().notEmpty().and().notDeleted().andLiteral(where, queryArgs)).orderBy(DATE, false);
 
         if (K9.DEBUG) {
             Log.d(K9.LOG_TAG, "Query = " + sqlQuery);
@@ -557,10 +556,10 @@ public class LocalStore extends Store implements Serializable {
      * call the MessageRetrievalListener for each one
      */
     Message[] getMessages(
-        final MessageRetrievalListener listener,
-        final LocalFolder folder,
-        final SelectBuilder query
-    ) throws MessagingException {
+            final MessageRetrievalListener listener,
+            final LocalFolder folder,
+            final SelectBuilder query
+            ) throws MessagingException {
         final ArrayList<LocalMessage> messages = new ArrayList<LocalMessage>();
         final int j = database.execute(false, new DbCallback<Integer>() {
             @Override
@@ -628,13 +627,13 @@ public class LocalStore extends Store implements Serializable {
                 Cursor cursor = null;
                 try {
                     cursor = db.query(
-                                 "attachments",
-                                 new String[] { "name", "size", "mime_type" },
-                                 "id = ?",
-                                 new String[] { attachmentId },
-                                 null,
-                                 null,
-                                 null);
+                            "attachments",
+                            new String[] { "name", "size", "mime_type" },
+                            "id = ?",
+                            new String[] { attachmentId },
+                            null,
+                            null,
+                            null);
                     if (!cursor.moveToFirst()) {
                         return null;
                     }
@@ -690,14 +689,14 @@ public class LocalStore extends Store implements Serializable {
                     folder.refresh(name, prefHolder);   // Recover settings from Preferences
 
                     db.execSQL("INSERT INTO folders (name, visible_limit, top_group, display_class, poll_class, push_class, integrate) VALUES (?, ?, ?, ?, ?, ?, ?)", new Object[] {
-                                   name,
-                                   visibleLimit,
-                                   prefHolder.inTopGroup ? 1 : 0,
-                                   prefHolder.displayClass.name(),
-                                   prefHolder.syncClass.name(),
-                                   prefHolder.pushClass.name(),
-                                   prefHolder.integrate ? 1 : 0,
-                               });
+                            name,
+                            visibleLimit,
+                            prefHolder.inTopGroup ? 1 : 0,
+                                    prefHolder.displayClass.name(),
+                                    prefHolder.syncClass.name(),
+                                    prefHolder.pushClass.name(),
+                                    prefHolder.integrate ? 1 : 0,
+                    });
 
                 }
                 return null;
@@ -775,7 +774,7 @@ public class LocalStore extends Store implements Serializable {
                 database.execute(true, new DbCallback<Void>() {
                     @Override
                     public Void doDbWork(final SQLiteDatabase db) throws WrappedException,
-                            UnavailableStorageException {
+                    UnavailableStorageException {
 
                         selectionCallback.doDbWork(db, selection.toString(),
                                 selectionArgs.toArray(EMPTY_STRING_ARRAY));
@@ -988,9 +987,9 @@ public class LocalStore extends Store implements Serializable {
                 } else {
                     String sql =
                             "SELECT m.uid, f.name " +
-                            "FROM messages m " +
-                            "LEFT JOIN folders f ON (m.folder_id = f.id) " +
-                            "WHERE (m.empty IS NULL OR m.empty != 1) AND m.id" + selectionSet;
+                                    "FROM messages m " +
+                                    "LEFT JOIN folders f ON (m.folder_id = f.id) " +
+                                    "WHERE (m.empty IS NULL OR m.empty != 1) AND m.id" + selectionSet;
 
                     getDataFromCursor(db.rawQuery(sql, selectionArgs));
                 }
